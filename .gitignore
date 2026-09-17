@@ -1,0 +1,44 @@
+/node_modules
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.backup
+.phpunit.result.cache
+docker-compose.override.yml
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+/.idea
+/.vscode
+
+# Database Backups & Logs
+*.sql
+*.log
+laravel.log
+..env.swp
+.env.backup*
+
+# Media & Videos
+*.mp4
+*.webm
+*.mkv
+*.avi
+*.mov
+*.flv
+*.ts
+*.chunk
+*.part
+
+# Video & Recording Directories
+/public/recordings/
+/public/videos/
+/recordings/
+/storage/app/public/recordings/
+/storage/app/public/videos/
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*server/node_modules/
+**/node_modules/

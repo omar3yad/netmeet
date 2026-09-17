@@ -1,0 +1,22 @@
+{
+  "name": "Networkat Meetings",
+  "short_name": "Networkat",
+  "start_url": "/index.php",
+  "display": "standalone",
+  "background_color": "#0b0d17",
+  "theme_color": "#0b0d17",
+  "description": "Secure browser-based meetings with background-safe WebRTC and Picture-in-Picture support.",
+  "icons": [
+    {
+      "src": "xplogo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "xplogo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+

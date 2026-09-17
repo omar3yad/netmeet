@@ -1,0 +1,236 @@
+/*jshint esversion: 6 */
+/*jshint node: true */
+//handle join event
+const siofu = require("socketio-file-upload");
+const fs = require('fs');
+const path = require('path');
+const fetch = require('node-fetch');
+const cron = require('node-cron');
+const { getChatGPTResponse, removeSocketId } = require('./chatgptService');
+
+let meetings = [];
+
+//handle join event
+function handleJoin(socket, data) {
+    socket.meetingId = data.meetingId;
+    socket.moderator = data.isModerator;
+    socket.screen = data.screen;
+    socket.join(data.meetingId);
+    data.socketId = socket.id;
+    sendToMeeting(socket, data);
+}
+
+//handle disconnect event
+function handleDisconnect(socket, io) {
+    //remove file_uploads folder by meetingId
+    let dirName = path.join(__dirname, '../public/file_uploads/' + socket.meetingId);
+    if (!io.sockets.adapter.rooms[socket.meetingId] && fs.existsSync(dirName)) {
+        fs.rmSync(dirName, { recursive: true });
+    }
+
+    //remove socket ID from ChatGPT conversations
+    removeSocketId(socket.id);
+
+    //if the socket is moderator and it is not a screen, delete after grace period (30s)
+    if (socket.moderator && !socket.screen && meetings[socket.meetingId]) {
+        const mId = socket.meetingId;
+        // Cancel any previous pending delete
+        if (meetings[mId].pendingDelete) clearTimeout(meetings[mId].pendingDelete);
+        // Schedule deletion after 30 seconds (allows host to reconnect)
+        meetings[mId].pendingDelete = setTimeout(() => {
+            if (meetings[mId]) delete meetings[mId];
+        }, 30000);
+        meetings[mId].isModeratorPresent = false;
+    }
+
+    socket.leave(socket.meetingId);
+    //notify all the participants when anyone leaves the meeting
+    sendToMeeting(socket, { type: 'leave', fromSocketId: socket.id, isModerator: socket.moderator, screen: socket.screen });
+}
+
+//check meeting length and moderator availibility
+function handleCheckMeeting(socket, data, io) {
+    let result = !io.sockets.adapter.rooms.get(data.meetingId) || io.sockets.adapter.rooms.get(data.meetingId).size < data.userLimit;
+
+    if (result) {
+        if (data.authMode == "disabled" || data.moderator || data.moderatorRights == "disabled") {
+            // If meeting was pending deletion (host reconnecting), cancel it
+            if (meetings[data.meetingId] && meetings[data.meetingId].pendingDelete) {
+                clearTimeout(meetings[data.meetingId].pendingDelete);
+                delete meetings[data.meetingId].pendingDelete;
+            }
+            meetings[data.meetingId] = {
+                ...(meetings[data.meetingId] || {}),
+                isModeratorPresent: true,
+                moderator: socket.id
+            };
+            //directly allow the user if he is the moderator or if the moderator rights are disabled
+            sendToPeer(io, { type: 'checkMeetingResult', result: true, toSocketId: socket.id, message: '', chatBotName: getAIChatBotName() });
+        } else if (meetings[data.meetingId] && meetings[data.meetingId].isModeratorPresent) {
+            //notify the moderator for new request
+            sendToPeer(io, { type: 'permission', toSocketId: meetings[data.meetingId].moderator, fromSocketId: socket.id, username: data.username });
+            sendToPeer(io, { type: 'info', toSocketId: socket.id, message: 'please_wait' });
+        } else {
+            //do not allow anyone in the meeting before moderator joins
+            sendToPeer(io, { type: 'checkMeetingResult', result: false, toSocketId: socket.id, message: 'not_started' });
+        }
+    } else {
+        //user limit has reached
+        sendToPeer(io, { type: 'checkMeetingResult', result: false, toSocketId: socket.id, message: 'meeting_full' });
+    }
+}
+
+// get the chatbot name form env and pass it to meeting.js
+function getAIChatBotName() {
+    const chatBotApiUrl = process.env.AI_CHATBOT_API_URL;
+
+    if (chatBotApiUrl && chatBotApiUrl.includes("deepseek")) {
+        return "DeepSeek";
+    } else {
+        return "ChatGPT";
+    }
+}
+
+//notify the moderator for new request
+function handleRecordingPermission(socket, data, io) {
+    if (!meetings[data.meetingId]) return;
+    sendToPeer(io, { type: 'recordingPermission', toSocketId: meetings[data.meetingId].moderator, fromSocketId: socket.id, username: data.username });
+    sendToPeer(io, { type: 'info', toSocketId: socket.id, message: 'please_wait' });
+}
+
+//notify the moderator for new request
+function handleScreenSharePermission(socket, data, io) {
+    if (!meetings[data.meetingId]) return;
+    sendToPeer(io, { type: 'screenSharePermission', toSocketId: meetings[data.meetingId].moderator, fromSocketId: socket.id, username: data.username });
+}
+
+//notify the moderator for mic toggled
+function handleMicToggled(socket, data, io) {
+    if (!meetings[data.meetingId]) return;
+    sendToPeer(io, { type: 'micToggled', toSocketId: meetings[data.meetingId].moderator, fromSocketId: socket.id, audioMuted: data.audioMuted });
+}
+
+//notify the moderator for camera toggled
+function handleCameraToggled(socket, data, io) {
+    if (!meetings[data.meetingId]) return;
+    sendToPeer(io, { type: 'cameraToggled', toSocketId: meetings[data.meetingId].moderator, fromSocketId: socket.id, videoMuted: data.videoMuted });
+}
+
+//send the message to particular user
+function sendToPeer(io, data) {
+    io.to(data.toSocketId).emit('message', JSON.stringify(data));
+}
+
+//send the message to particular meeting
+function sendToMeeting(socket, data) {
+    socket.broadcast.to(socket.meetingId).emit('message', JSON.stringify(data));
+}
+
+
+//check details
+function checkDetails() {
+    fetch(process.env.DOMAIN + '/check-details')
+        .then(res => res.text())
+        .then(result => {
+            if (!result) process.exit(1);
+        });
+}
+
+//handle ChatGPT message
+async function handleChatGPTMessage(socket, data, io) {
+    const reply = await getChatGPTResponse(socket.id, data.message);
+
+    io.to(socket.id).emit('message', JSON.stringify({
+        'type': "chatGPTResponse",
+        "message": reply,
+        'chatBotName': getAIChatBotName()
+    }));
+}
+
+module.exports = function (io) {
+    // checkDetails();
+
+    cron.schedule('0 0 * * 0', () => {
+        // checkDetails();
+    });
+
+    //handle connection event
+    io.sockets.on('connection', function (socket) {
+        socket.on('message', function (data) {
+            data = JSON.parse(data);
+
+            switch (data.type) {
+                case 'join':
+                    handleJoin(socket, data);
+                    break;
+                case 'checkMeeting':
+                    handleCheckMeeting(socket, data, io);
+                    break;
+                case 'recordingPermission':
+                    handleRecordingPermission(socket, data, io);
+                    break;
+                case 'offer':
+                case 'answer':
+                case 'candidate':
+                case 'message':
+                case 'permissionResult':
+                case 'recordingPermissionResult':
+                case 'currentTime':
+                case 'kick':
+                    sendToPeer(io, data);
+                    break;
+                case 'meetingMessage':
+                case 'whiteboard':
+                case 'clearWhiteboard':
+                case 'raiseHand':
+                case 'sync':
+                case 'recordingStarted':
+                    sendToMeeting(socket, data);
+                    break;
+                case "speaking":
+                case "muteAll":
+                case "fileMessage":
+                    sendToMeeting(socket, data);
+                    break;
+                case 'recordingPermission':
+                    handleRecordingPermission(socket, data, io);
+                    break;
+                case 'screenSharePermission':
+                    handleScreenSharePermission(socket, data, io);
+                    break;
+                case 'micToggled':
+                    handleMicToggled(socket, data, io);
+                    break;
+                case 'cameraToggled':
+                    handleCameraToggled(socket, data, io);
+                    break;
+                case 'permissionResult':
+                case 'recordingPermissionResult':
+                case 'screenSharePermissionResult':
+                case 'mic-admin':
+                case 'camera-admin':
+                    sendToPeer(io, data);
+                    break;
+                case 'chatGPTMessage':
+                    handleChatGPTMessage(socket, data, io);
+                    break;
+                case 'moderatorAssignment':
+                    socket.moderator = false;
+                    sendToPeer(io, data);
+                    break;
+                case 'moderatorUpdated':
+                    meetings[data.meetingId].moderator = socket.id;
+                    socket.moderator = true;
+                    sendToMeeting(socket, data);
+                    break;
+                case 'moderatorButtons':
+                    sendToPeer(io, data);
+                    break;
+            }
+        });
+
+        socket.on('disconnect', function () {
+            handleDisconnect(socket, io);
+        });
+    });
+}

@@ -1,0 +1,253 @@
+@extends('layouts.app')
+
+@section('title', getSetting('APPLICATION_NAME') . ' | ' . __('Register'))
+
+@section('style')
+<style>
+    :root {
+        --np-black: #00bef2;
+        --np-black-hover: #0099c8;
+        --np-black-dark: #0099c8;
+        --np-text: #18181b;
+        --np-muted: #71717a;
+        --np-soft: #a1a1aa;
+        --np-border: #e4e4e7;
+        --np-bg-soft: #fafafa;
+        --np-blue: #00bef2;
+        --np-blue-soft: #e3f7ff;
+        --np-blue-text: #006d8c;
+    }
+
+    body { background: linear-gradient(135deg, #f5f7fa 0%, #e3f7ff 100%); }
+
+    .np-auth { min-height: 100vh; background: transparent; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif; color: var(--np-text); }
+    .np-grid { display: grid; grid-template-columns: 1.15fr 1fr; min-height: 100vh; max-width: 1280px; margin: 0 auto; background: #ffffff; border-radius: 20px; box-shadow: 0 10px 40px rgba(0, 190, 242, 0.1); overflow: hidden; }
+
+    /* LEFT — features showcase */
+    .np-left { background: #ffffff; padding: 36px 48px; display: flex; flex-direction: column; justify-content: space-between; border-right: 1px solid #f4f4f5; }
+    .np-brand { display: flex; align-items: center; gap: 10px; }
+    .np-logo-mark { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #00bef2 0%, #0099c8 100%); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; font-size: 14px; }
+    .np-brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: #0099c8; }
+
+    .np-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--np-blue-soft); border-radius: 20px; margin-bottom: 20px; }
+    .np-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--np-blue); }
+    .np-pill-text { font-size: 11px; color: var(--np-blue-text); font-weight: 600; letter-spacing: 0.02em; }
+
+    .np-headline { font-size: 34px; font-weight: 600; letter-spacing: -0.025em; color: #1a3a47; margin: 0 0 14px; line-height: 1.15; }
+    .np-sub { font-size: 13px; color: var(--np-muted); margin: 0 0 28px; line-height: 1.6; max-width: 380px; }
+
+    .np-features { display: flex; flex-direction: column; gap: 16px; }
+    .np-feature { display: flex; gap: 12px; align-items: flex-start; }
+    .np-feature-icon { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; background: #e3f7ff; border: 1px solid #b3ecfa; display: flex; align-items: center; justify-content: center; }
+    .np-feature-icon svg { width: 16px; height: 16px; }
+    .np-feature-title { font-size: 13px; font-weight: 600; color: var(--np-black); margin-bottom: 2px; }
+    .np-feature-desc { font-size: 12px; color: var(--np-muted); line-height: 1.5; }
+
+    .np-footnote { font-size: 11px; color: var(--np-soft); letter-spacing: 0.04em; }
+
+    /* RIGHT — form */
+    .np-right { background: #ffffff; padding: 40px 56px; display: flex; flex-direction: column; justify-content: center; }
+    .np-top-link { display: flex; justify-content: flex-end; margin-bottom: 24px; font-size: 13px; color: var(--np-muted); }
+    .np-top-link a { color: #00bef2; text-decoration: none; font-weight: 600; border-bottom: 1px solid #b3ecfa; padding-bottom: 1px; margin-left: 4px; }
+
+    .np-form-wrap { max-width: 380px; width: 100%; margin: 0 auto; }
+    .np-h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; color: #1a3a47; margin: 0 0 6px; }
+    .np-h2-sub { font-size: 13px; color: var(--np-muted); margin: 0 0 22px; }
+
+    .np-field { margin-bottom: 12px; }
+    .np-label { font-size: 12px; font-weight: 600; color: #3f3f46; display: block; margin-bottom: 6px; }
+    .np-input { width: 100%; border-radius: 10px !important; height: 42px; padding: 0 14px; border: 1px solid var(--np-border); border-radius: 7px; font-size: 14px; color: var(--np-black); background: #fff; box-sizing: border-box; outline: none; transition: all 0.15s; }
+    .np-input:focus { border-color: #00bef2; box-shadow: 0 0 0 3px rgba(0, 190, 242, 0.15); }
+    .np-input.is-invalid { border-color: #ef4444; }
+
+    .np-check { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0 20px; }
+    .np-check input { width: 14px; height: 14px; accent-color: #00bef2; margin: 2px 0 0; flex-shrink: 0; }
+    .np-check label { font-size: 12px; color: #52525b; cursor: pointer; line-height: 1.5; }
+    .np-check label a { color: #00bef2; text-decoration: underline; font-weight: 500; }
+
+    .np-submit { width: 100%; height: 44px; background: linear-gradient(135deg, #00bef2 0%, #0099c8 100%); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; letter-spacing: -0.01em; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.2s; box-shadow: 0 4px 14px rgba(0, 190, 242, 0.3); }
+    .np-submit:hover { background: linear-gradient(135deg, #0099c8 0%, #007a9e 100%); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+    .np-legal { font-size: 11px; color: var(--np-soft); text-align: center; margin: 18px 0 0; line-height: 1.6; }
+    .np-legal a { color: #52525b; text-decoration: underline; }
+
+    .invalid-feedback { display: block; color: #ef4444; font-size: 12px; margin-top: 5px; }
+
+    @media (max-width: 991px) {
+        .np-grid { grid-template-columns: 1fr; }
+        .np-left { display: none; }
+        .np-right { padding: 32px 24px; }
+    }
+    @media (max-width: 480px) {
+        .np-right { padding: 24px 18px; }
+        .np-form-wrap { max-width: 100%; }
+    }
+</style>
+@endsection
+
+@section('content')
+<section class="np-auth">
+    <div class="np-grid">
+
+        {{-- LEFT: Features showcase --}}
+        <div class="np-left">
+            <div class="np-brand">
+                <div class="np-logo-mark">{{ strtoupper(substr(getSetting('APPLICATION_NAME'), 0, 1)) }}</div>
+                <span class="np-brand-name">{{ getSetting('APPLICATION_NAME') }}</span>
+            </div>
+
+            <div>
+                <div class="np-pill">
+                    <div class="np-pill-dot"></div>
+                    <span class="np-pill-text">{{ __('Free forever · No credit card') }}</span>
+                </div>
+                <h1 class="np-headline">{{ __('Get started in') }}<br>{{ __('under 30 seconds.') }}</h1>
+                <p class="np-sub">{{ __('Join thousands of teams already using') }} {{ getSetting('APPLICATION_NAME') }} {{ __('for their daily standups and client calls.') }}</p>
+
+                <div class="np-features">
+                    <div class="np-feature">
+                        <div class="np-feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#00bef2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </div>
+                        <div>
+                            <div class="np-feature-title">{{ __('Unlimited 1-on-1 meetings') }}</div>
+                            <div class="np-feature-desc">{{ __('No time limits, no caps. Talk as long as you need.') }}</div>
+                        </div>
+                    </div>
+
+                    <div class="np-feature">
+                        <div class="np-feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#00bef2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        </div>
+                        <div>
+                            <div class="np-feature-title">{{ __('End-to-end encrypted') }}</div>
+                            <div class="np-feature-desc">{{ __('Your conversations stay private. Always.') }}</div>
+                        </div>
+                    </div>
+
+                    <div class="np-feature">
+                        <div class="np-feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#00bef2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        </div>
+                        <div>
+                            <div class="np-feature-title">{{ __('Works in your browser') }}</div>
+                            <div class="np-feature-desc">{{ __('No downloads. No installations. Just click and join.') }}</div>
+                        </div>
+                    </div>
+
+                    <div class="np-feature">
+                        <div class="np-feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#00bef2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </div>
+                        <div>
+                            <div class="np-feature-title">{{ __('Recording & transcripts') }}</div>
+                            <div class="np-feature-desc">{{ __('Never miss a detail. Review meetings anytime.') }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="np-footnote">© {{ date('Y') }} {{ getSetting('APPLICATION_NAME') }}. {{ __('All rights reserved.') }}</div>
+        </div>
+
+        {{-- RIGHT: Form --}}
+        <div class="np-right">
+            <div class="np-top-link">
+                {{ __('Already have an account?') }}
+                <a href="{{ route('login') }}">{{ __('Sign in') }}</a>
+            </div>
+
+            <div class="np-form-wrap">
+                <h2 class="np-h2">{{ __('Create your account') }}</h2>
+                <p class="np-h2-sub">{{ __('Free forever. Upgrade anytime.') }}</p>
+
+                <form method="POST" action="{{ route('register') }}">
+                    @csrf
+
+                    <div class="np-field">
+                        <label class="np-label" for="username">{{ __('Username') }}</label>
+                        <input id="username" type="text"
+                            class="np-input @error('username') is-invalid @enderror"
+                            name="username" value="{{ old('username') }}"
+                            placeholder="janecooper" maxlength="20"
+                            required autocomplete="username" autofocus>
+                        @error('username')
+                            <span class="invalid-feedback">{{ $message }}</span>
+                        @enderror
+                    </div>
+
+                    <div class="np-field">
+                        <label class="np-label" for="email">{{ __('Work email') }}</label>
+                        <input id="email" type="email"
+                            class="np-input @error('email') is-invalid @enderror"
+                            name="email" value="{{ old('email') }}"
+                            placeholder="jane@company.com" maxlength="50"
+                            required autocomplete="email">
+                        @error('email')
+                            <span class="invalid-feedback">{{ $message }}</span>
+                        @enderror
+                    </div>
+
+                    <div class="np-field">
+                        <label class="np-label" for="password">{{ __('Password') }}</label>
+                        <input id="password" type="password"
+                            class="np-input @error('password') is-invalid @enderror"
+                            name="password" maxlength="50"
+                            placeholder="{{ __('At least 8 characters') }}"
+                            required autocomplete="new-password">
+                        @error('password')
+                            <span class="invalid-feedback">{{ $message }}</span>
+                        @enderror
+                    </div>
+
+                    <div class="np-field">
+                        <label class="np-label" for="password-confirm">{{ __('Confirm password') }}</label>
+                        <input id="password-confirm" type="password"
+                            class="np-input"
+                            name="password_confirmation" maxlength="50"
+                            placeholder="{{ __('Repeat your password') }}"
+                            required autocomplete="new-password">
+                    </div>
+
+                    @if (getSetting('CAPTCHA_REGISTER_PAGE') == 'enabled')
+                        <div class="np-field">
+                            <div class="g-recaptcha" data-sitekey="{{ getSetting('GOOGLE_RECAPTCHA_KEY') }}"></div>
+                            @if ($errors->has('g-recaptcha-response'))
+                                <span class="invalid-feedback">{{ $errors->first('g-recaptcha-response') }}</span>
+                            @endif
+                        </div>
+                    @endif
+
+                    <div class="np-check">
+                        <input type="checkbox" name="terms" id="terms" class="@error('terms') is-invalid @enderror">
+                        <label for="terms">
+                            {{ __('I agree to the') }}
+                            <a href="/pages/terms-and-conditions" target="_blank">{{ __('Terms & Conditions') }}</a>
+                            @error('terms')
+                                <span class="invalid-feedback">{{ $message }}</span>
+                            @enderror
+                        </label>
+                    </div>
+
+                    <button type="submit" class="np-submit">
+                        {{ __('Create account') }}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                    </button>
+                </form>
+
+                <p class="np-legal">
+                    {{ __('By creating an account you agree to the') }}<br>
+                    <a href="#">{{ __('Terms') }}</a> {{ __('and') }}
+                    <a href="#">{{ __('Privacy policy') }}</a>
+                </p>
+            </div>
+        </div>
+
+    </div>
+</section>
+@endsection
+
+@section('script')
+<script src="https://www.google.com/recaptcha/api.js"></script>
+<script>document.body.classList.add('np-auth-page');</script>
+@endsection

@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "info.netmeet.twa",
+        "sha256_cert_fingerprints": ["2F:7C:61:5B:57:1F:35:39:B0:A7:B8:18:32:7B:B3:7A:A1:34:80:53:1E:9F:91:90:05:11:6B:1E:EC:2C:91:25"]
+      }
+    }]

@@ -1,0 +1,43 @@
+<?php
+
+return [
+    'LOG_EVENTS' => [
+        'user_created' => 'User Created',
+        'user_details_updated' => 'User Details Updated',
+        'user_plan_updated' => 'User Plan Updated',
+        'user_status_updated' => 'User Status Updated',
+        'user_deleted' => 'User Deleted',
+        'user_loggedin' => 'User Logged In',
+        'user_registered' => 'User Registered',
+        'user_reset_password' => 'User Reset Password',
+        'meeting_created' => 'Meeting Created',
+        'meeting_details_updated' => 'Meeting Details Updated',
+        'meeting_status_updated' => 'Meeting Status Updated',
+        'meeting_deleted' => 'Meeting Deleted',
+        'meeting_invite_sent'  =>  'Meeting Invite Sent',
+        'plan_created' => 'Plan Created',
+        'plan_deleted' => 'Plan Deleted',
+        'plan_status_updated' => 'Plan Status Updated',
+        'plan_details_updated' => 'Plan Details Updated',
+        'coupon_created' => 'Coupon Created',
+        'coupon_status_updated' => 'Coupon Status Updated',
+        'coupon_details_updated' => 'Coupon Details Updated',
+        'taxrate_created' => 'Tax Rate Created',
+        'taxrate_status_updated' => 'Tax Rate Status Updated',
+        'taxrate_details_updated' => 'Tax Rate Details Updated',
+        'globalconfig_details_updated' => 'Global Config Details Updated',
+        'contact_created' => 'Contact Created',
+        'contact_details_updated' => 'Contact Details Updated',
+        'contact_deleted' => 'Contact Deleted',
+        'payment_received' => 'Payment Received',
+        'fetching_update_details' => 'Fetching Update Details',
+        'downloading_updates' => 'Downloading Updates',
+        'verifying_licence' => 'Verifying Licence',
+        'uninstall_licence' => 'Uninstall Licence',
+        'email_templates_updated' => 'Email Template Details Updated',
+        'page_created' => 'Page Created',
+        'page_deleted' => 'Page Deleted',
+        'page_details_updated' => 'Page Details Updated'
+        
+    ],
+];

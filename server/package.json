@@ -1,0 +1,23 @@
+{
+    "name": "JupiterMeet",
+    "description": "Signalling server for JupiterMeet",
+    "version": "2.9.3",
+    "scripts": {
+        "local": "node local.js",
+        "live": "pm2 start app.js --name 'JupiterMeet'",
+        "turn": "pm2 start turnserver"
+    },
+    "dependencies": {
+        "axios": "^1.7.7",
+        "dotenv": "^10.0.0",
+        "express": "",
+        "multer": "^2.0.1",
+        "node-cron": "^3.0.2",
+        "node-fetch": "^2.6.7",
+        "node-turn": "^0.0.6",
+        "nodemon": "^2.0.22",
+        "path": "^0.12.7",
+        "socket.io": "^4.5.3",
+        "socketio-file-upload": "^0.7.3"
+    }
+}
