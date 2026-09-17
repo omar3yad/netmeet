@@ -448,12 +448,11 @@
                         </div>
                         <div class="col-lg-9 col-md-8">
                             <select id="videoQualitySelect" class="form-control">
-                                <option id="QVGA" data-width="320" data-height="240">{{ __('QVGA') }}</option>
-                                <option id="VGA" data-width="640" data-height="480" selected>{{ __('VGA') }}
-                                </option>
-                                <option id="HD" data-width="1280" data-height="720">{{ __('HD') }}</option>
-                                <option id="FHD" data-width="1920" data-height="1080">{{ __('FHD') }}</option>
-                                <option id="4K" data-width="3840" data-height="2160">{{ __('4K') }}</option>
+                                <option id="QVGA" value="QVGA" data-width="320" data-height="240">{{ __('QVGA') }}</option>
+                                <option id="VGA" value="VGA" data-width="640" data-height="480" selected>{{ __('VGA') }}</option>
+                                <option id="HD" value="HD" data-width="1280" data-height="720">{{ __('HD') }}</option>
+                                <option id="FHD" value="FHD" data-width="1920" data-height="1080">{{ __('FHD') }}</option>
+                                <option id="4K" value="4K" data-width="3840" data-height="2160">{{ __('4K') }}</option>
                             </select>
                         </div>
                     </div>
@@ -648,34 +647,14 @@
         const userLimit = "{{ $meeting->userLimit == -1 ? 9999 : $meeting->userLimit }}";
         const features = JSON.parse("{{ json_encode($meeting->features) }}".replace(/&quot;/g, '"'));
         Object.freeze(features);
-        // Complete prevention of back/forward navigation
+        // Prevention of back navigation without interrupting permission prompts
         (function() {
-            // Disable back button
             function preventBack() {
-                window.history.forward();
-            }
-
-            // Initial setup
-            window.history.forward();
-            window.addEventListener('load', preventBack);
-            window.addEventListener('pageshow', function(evt) {
-                if (evt.persisted) preventBack();
-            });
-
-            // Alternative comprehensive approach
-            function disableBackButton() {
                 window.history.pushState(null, "", window.location.href);
-                window.onpopstate = function() {
-                    window.history.pushState(null, "", window.location.href);
-                };
             }
-
-            // Call on page load
-            window.addEventListener('load', disableBackButton);
-
-            // Also handle browser refresh
-            window.addEventListener('beforeunload', function() {
-                // Optional: Add any cleanup code here
+            window.history.pushState(null, "", window.location.href);
+            window.addEventListener('popstate', function() {
+                window.history.pushState(null, "", window.location.href);
             });
         })();
     </script>
@@ -812,10 +791,12 @@
         }
     }
 
+    let wasAutoPiP = false;
+
     // Auto-PiP when user minimizes / switches apps
     document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'hidden') {
-            // Only try PiP if browser supports it and we are in a meeting
+            // Only try auto-PiP if browser supports it and we are not already in PiP
             if (!document.pictureInPictureEnabled) return;
             if (document.pictureInPictureElement) return;
 
@@ -829,20 +810,23 @@
                 pipVideo = video;
                 await video.requestPictureInPicture();
                 wasInPiP = true;
+                wasAutoPiP = true;
                 console.log('Entered PiP automatically');
             } catch (err) {
                 console.log('Auto-PiP failed:', err);
             }
         } else if (document.visibilityState === 'visible') {
-            // Came back to app — exit PiP
-            try {
-                if (document.pictureInPictureElement) {
+            // Reacquire wake lock
+            requestWakeLock();
+
+            // Only exit PiP if it was entered automatically via backgrounding
+            if (wasAutoPiP && document.pictureInPictureElement) {
+                try {
                     await document.exitPictureInPicture();
-                }
-                wasInPiP = false;
-                // Reacquire wake lock (it auto-releases on hide)
-                requestWakeLock();
-            } catch (err) { console.log('Exit PiP failed:', err); }
+                    wasInPiP = false;
+                    wasAutoPiP = false;
+                } catch (err) { console.log('Exit Auto-PiP failed:', err); }
+            }
         }
     });
 
@@ -866,34 +850,6 @@
     document.addEventListener('click', initOnInteraction, { once: true });
     document.addEventListener('touchstart', initOnInteraction, { once: true });
 
-    // Auto-switch PiP source when participants change
-    let pipSwitchInterval = null;
-    function startPipAutoSwitch() {
-        if (pipSwitchInterval) return;
-        pipSwitchInterval = setInterval(async () => {
-            if (!document.pictureInPictureElement) return;
-            const currentPip = document.pictureInPictureElement;
-            const bestVideo = findActiveVideo();
-            // Switch only if we found a different and better video
-            if (bestVideo && bestVideo !== currentPip && bestVideo.videoWidth > 0) {
-                try {
-                    await document.exitPictureInPicture();
-                    await new Promise(r => setTimeout(r, 100));
-                    if (bestVideo.id === 'fallbackVideo' && bestVideo.paused) {
-                        await bestVideo.play();
-                    }
-                    await bestVideo.requestPictureInPicture();
-                } catch (e) { /* ignore */ }
-            }
-        }, 2000);
-    }
-    function stopPipAutoSwitch() {
-        if (pipSwitchInterval) {
-            clearInterval(pipSwitchInterval);
-            pipSwitchInterval = null;
-        }
-    }
-
     // Debug: log what's in the DOM when PiP is pressed
     function debugPipState() {
         const allVideos = document.querySelectorAll('video');
@@ -916,8 +872,13 @@
     // Manual PiP button trigger
     window.toggleMeetingPiP = async function() {
         if (document.pictureInPictureElement) {
-            await document.exitPictureInPicture();
-            stopPipAutoSwitch();
+            try {
+                await document.exitPictureInPicture();
+                wasInPiP = false;
+                wasAutoPiP = false;
+            } catch (e) {
+                console.log('Exit PiP error:', e);
+            }
         } else {
             const video = findActiveVideo();
             if (video) {
@@ -926,21 +887,31 @@
                         await video.play();
                     }
                     await video.requestPictureInPicture();
-                    startPipAutoSwitch();
+                    wasInPiP = true;
+                    wasAutoPiP = false;
                 } catch (e) {
                     console.log('PiP failed:', e);
-                    alert('Picture-in-Picture failed.');
+                    if (typeof showError === 'function') {
+                        showError('Picture-in-Picture failed: ' + (e.message || e));
+                    } else {
+                        alert('Picture-in-Picture failed.');
+                    }
                 }
             } else {
                 const debug = debugPipState();
-                alert('PiP failed. Debug info:\n\n' + debug);
+                if (typeof showError === 'function') {
+                    showError('No active video found for Picture-in-Picture');
+                } else {
+                    alert('PiP failed. Debug info:\n\n' + debug);
+                }
             }
         }
     };
 
-    // Stop auto-switch when PiP closes
+    // Reset state when user leaves PiP manually from native browser control
     document.addEventListener('leavepictureinpicture', () => {
-        stopPipAutoSwitch();
+        wasInPiP = false;
+        wasAutoPiP = false;
     });
 })();
 </script>

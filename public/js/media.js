@@ -70,9 +70,11 @@
             let success = false;
 
             if (hasMic || hasCam) {
+                const audioConstraints = hasMic ? getAudioConstraints() : false;
+                const videoConstraints = hasCam ? getVideoConstraints() : false;
                 state.constraints = {
-                    audio: hasMic ? getAudioConstraints() : false,
-                    video: hasCam ? getVideoConstraints() : false
+                    audio: audioConstraints,
+                    video: videoConstraints
                 };
 
                 try {
@@ -80,21 +82,25 @@
                     success = true;
                 } catch (e) {
                     console.error("getUserMedia failed for detected devices:", e);
-                    // Fallback in case permission is denied or device is busy
-                    if (hasMic && hasCam) {
-                        console.log("Retrying with audio-only fallback...");
+                    // Do NOT loop/re-prompt if user explicitly denied permission or dismissed prompt
+                    const isPermissionDenied = (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError');
+                    
+                    if (!isPermissionDenied && hasMic && hasCam) {
+                        console.log("Retrying with audio-only fallback due to device error...");
                         try {
                             state.constraints = { audio: getAudioConstraints(), video: false };
                             state.localStream = await navigator.mediaDevices.getUserMedia(state.constraints);
                             success = true;
                         } catch (err2) {
-                            console.log("Audio-only fallback failed, trying video-only...");
-                            try {
-                                state.constraints = { audio: false, video: getVideoConstraints() };
-                                state.localStream = await navigator.mediaDevices.getUserMedia(state.constraints);
-                                success = true;
-                            } catch (err3) {
-                                console.log("All media fallbacks failed.");
+                            if (err2.name !== 'NotAllowedError' && err2.name !== 'PermissionDeniedError') {
+                                console.log("Audio-only fallback failed, trying video-only...");
+                                try {
+                                    state.constraints = { audio: false, video: getVideoConstraints() };
+                                    state.localStream = await navigator.mediaDevices.getUserMedia(state.constraints);
+                                    success = true;
+                                } catch (err3) {
+                                    console.log("All media fallbacks failed.");
+                                }
                             }
                         }
                     }
@@ -162,57 +168,57 @@
         manageCamera(false);
     });
 
-async function manageCamera(byModerator) {
-    if (state.isModerator) $("#toggleVideo").attr('disabled', true);
+    async function manageCamera(byModerator) {
+        if (state.isModerator) $("#toggleVideo").attr('disabled', true);
 
-    // إذا لم يكن هناك Video Track، أنشئ واحدًا جديدًا
-    if (state.localStream.getVideoTracks().length === 0) {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
+        // إذا لم يكن هناك Video Track، أنشئ واحدًا جديدًا
+        if (state.localStream.getVideoTracks().length === 0) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
                     video: true,
-    audio: false
-            });
+                    audio: false
+                });
 
-            const videoTrack = stream.getVideoTracks()[0];
+                const videoTrack = stream.getVideoTracks()[0];
 
-            state.localStream.addTrack(videoTrack);
-            state.meetingType = "video";
-            replaceMediaTrack(videoTrack);
+                state.localStream.addTrack(videoTrack);
+                state.meetingType = "video";
+                replaceMediaTrack(videoTrack);
 
-            if (localVideo) {
-                localVideo.srcObject = state.localStream;
+                if (localVideo) {
+                    localVideo.srcObject = state.localStream;
+                }
+
+                $("#toggleVideo").html('<i class="fa fa-video"></i>');
+                state.videoMuted = false;
+                state.meetingType = 'video';
+
+                showSuccess(byModerator ? languages.camera_on_moderator : languages.camera_on);
+
+            } catch (e) {
+                console.error(e);
+                showError(languages.no_video || "Unable to access camera");
             }
 
+            if (state.isModerator) $("#toggleVideo").attr('disabled', false);
+            return;
+        }
+
+        // السلوك الحالي إذا كان الـ Video Track موجودًا
+        if (state.videoMuted) {
+            state.localStream.getVideoTracks().forEach(track => track.enabled = true);
             $("#toggleVideo").html('<i class="fa fa-video"></i>');
             state.videoMuted = false;
-            state.meetingType = 'video';
-
             showSuccess(byModerator ? languages.camera_on_moderator : languages.camera_on);
-
-        } catch (e) {
-            console.error(e);
-            showError(languages.no_video || "Unable to access camera");
+        } else {
+            state.localStream.getVideoTracks().forEach(track => track.enabled = false);
+            $("#toggleVideo").html('<i class="fa fa-video-slash"></i>');
+            state.videoMuted = true;
+            showSuccess(byModerator ? languages.camera_off_moderator : languages.camera_off);
         }
 
         if (state.isModerator) $("#toggleVideo").attr('disabled', false);
-        return;
     }
-
-    // السلوك الحالي إذا كان الـ Video Track موجودًا
-    if (state.videoMuted) {
-        state.localStream.getVideoTracks().forEach(track => track.enabled = true);
-        $("#toggleVideo").html('<i class="fa fa-video"></i>');
-        state.videoMuted = false;
-        showSuccess(byModerator ? languages.camera_on_moderator : languages.camera_on);
-    } else {
-        state.localStream.getVideoTracks().forEach(track => track.enabled = false);
-        $("#toggleVideo").html('<i class="fa fa-video-slash"></i>');
-        state.videoMuted = true;
-        showSuccess(byModerator ? languages.camera_off_moderator : languages.camera_off);
-    }
-
-    if (state.isModerator) $("#toggleVideo").attr('disabled', false);
-}
 
     $(document).on('click', '#toggleMic', function () {
         if (!state.isModerator && state.settings.moderatorRights == "enabled") {
@@ -317,13 +323,14 @@ async function manageCamera(byModerator) {
 
     function getAudioConstraints() {
         try {
-            const audioSource = audioInputSelect.value;
-            return {
-                deviceId: audioSource ? { exact: audioSource } : undefined,
-            };
+            const audioSource = audioInputSelect ? audioInputSelect.value : null;
+            if (audioSource && audioSource.trim() !== '') {
+                return { deviceId: { exact: audioSource } };
+            }
+            return true;
         } catch (e) {
             console.warn("Error getting audio constraints:", e);
-            return false;
+            return true;
         }
     }
 
@@ -332,15 +339,28 @@ async function manageCamera(byModerator) {
             return false;
         } else {
             try {
-                const videoSource = videoInputSelect.value;
-                return {
-                    deviceId: videoSource ? { exact: videoSource } : undefined,
-                    width: { ideal: $('#' + videoQualitySelect.value).data('width') || 640 },
-                    height: { ideal: $('#' + videoQualitySelect.value).data('height') || 480 },
+                const videoSource = videoInputSelect ? videoInputSelect.value : null;
+                const qualityVal = (videoQualitySelect && videoQualitySelect.value) ? videoQualitySelect.value.trim() : 'VGA';
+                const qualityOption = document.getElementById(qualityVal) || document.querySelector('#videoQualitySelect option[value="' + qualityVal + '"]');
+                const width = qualityOption ? (parseInt(qualityOption.getAttribute('data-width')) || 640) : 640;
+                const height = qualityOption ? (parseInt(qualityOption.getAttribute('data-height')) || 480) : 480;
+
+                const constraints = {
+                    width: { ideal: width },
+                    height: { ideal: height },
                 };
+
+                if (videoSource && videoSource.trim() !== '') {
+                    constraints.deviceId = { exact: videoSource };
+                }
+
+                return constraints;
             } catch (e) {
                 console.warn("Error getting video constraints:", e);
-                return false;
+                return {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                };
             }
         }
     }
