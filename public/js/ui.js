@@ -46,7 +46,7 @@
             $('.local-user-name, .remote-user-name, .kick').hide();
         }, 3000);
 
-        $('body').on('mousemove', function () {
+        $('body').on('mousemove touchstart', function () {
             showOptions();
         });
     }
@@ -72,7 +72,21 @@
     });
 
     $(document).on('mouseout', '.videoContainer', function () {
-        $(this).find('span, button').hide();
+        if (!state.isMobile) {
+            $(this).find('span, button').hide();
+        }
+    });
+
+    $(document).on('click', '.videoContainer', function (e) {
+        if ($(e.target).closest('button').length) return;
+        let elements = $(this).find('span, button');
+        if (state.isMobile) {
+            if (elements.is(':visible')) {
+                elements.hide();
+            } else {
+                elements.show();
+            }
+        }
     });
 
     // enter into bigger video mode with double click on video
