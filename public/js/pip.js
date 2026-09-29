@@ -4,8 +4,7 @@
  * Loads after screen-share.js. Owns Picture-in-Picture (PiP) and Auto-PiP.
  * Handles:
  *  - Automatic Picture-in-Picture when page/tab is backgrounded (visibilitychange)
- *  - Exit PiP when returning to foreground
- *  - Fallback and toast guidance for iOS / unsupported browsers
+ *  - Exit PiP when returning to foreground (if auto-entered)
  *  - Manual PiP toggle via #pictureInPicture button or video click
  *  - Syncing button state and PiP indicators
  * -----------------------------------------------------------------------
@@ -38,6 +37,19 @@
         setupAutoPip();
         setupWakeLock();
         bindEvents();
+        ensurePlaybackOnInteraction();
+    }
+
+    // Ensure fallback video plays on any user interaction so it's always ready for PiP
+    function ensurePlaybackOnInteraction() {
+        function kickstart() {
+            const fallback = document.getElementById('fallbackVideo');
+            if (fallback && fallback.paused) {
+                fallback.play().catch(() => {});
+            }
+        }
+        document.addEventListener('click', kickstart, { passive: true });
+        document.addEventListener('touchstart', kickstart, { passive: true });
     }
 
     // Request Screen Wake Lock so screen doesn't turn off unexpectedly during meetings
@@ -81,13 +93,13 @@
             }
         }
 
-        // 3. Local video
+        // 3. Local camera video
         const localVideo = document.getElementById('localVideo');
         if (localVideo && isVideoActive(localVideo)) {
             return localVideo;
         }
 
-        // 4. Any video with a valid srcObject
+        // 4. Any participant video with srcObject
         const anyVideo = document.querySelector('#videos video:not(#previewVideo)');
         if (anyVideo && anyVideo.srcObject) {
             return anyVideo;
@@ -103,19 +115,20 @@
     }
 
     function updateAutoPipAttribute() {
-        if (!document.pictureInPictureEnabled) return;
         const target = findBestVideo();
         const allVideos = document.querySelectorAll('video');
         allVideos.forEach(v => {
             if (v === target) {
-                if (!v.autoPictureInPicture) {
+                try {
                     v.autoPictureInPicture = true;
+                    v.setAttribute('autopictureinpicture', '');
                     v.disablePictureInPicture = false;
-                }
+                } catch (e) {}
             } else {
-                if (v.autoPictureInPicture) {
+                try {
                     v.autoPictureInPicture = false;
-                }
+                    v.removeAttribute('autopictureinpicture');
+                } catch (e) {}
             }
         });
     }
@@ -141,10 +154,8 @@
 
     async function onVisibilityChange() {
         if (document.hidden || document.visibilityState === 'hidden') {
-            // Page is now hidden (user switched app or went to Home screen)
             await onBackground();
         } else {
-            // Page is visible again (user returned to app)
             await onForeground();
         }
     }
@@ -155,23 +166,7 @@
             return;
         }
 
-        // iOS Safari handling
-        if (state.isOnIOS || !document.pictureInPictureEnabled) {
-            const video = findBestVideo();
-            if (video && typeof video.webkitSetPresentationMode === 'function') {
-                try {
-                    video.webkitSetPresentationMode('picture-in-picture');
-                    state.isPipActive = true;
-                    isAutoPip = true;
-                    return;
-                } catch (e) {
-                    console.warn('[PiP] iOS webkitSetPresentationMode failed:', e);
-                }
-            }
-            return;
-        }
-
-        // Standard Web Picture-in-Picture
+        // Try to enter PiP automatically immediately when user leaves / goes home
         await enterPip(true);
     }
 
@@ -208,24 +203,29 @@
                 await video.play().catch(() => {});
             }
 
-            // iOS WebKit
-            if (typeof video.webkitSetPresentationMode === 'function' && !document.pictureInPictureEnabled) {
+            // Standard Web PiP on video element (works on Android Chrome, Desktop Chrome, Edge)
+            if (typeof video.requestPictureInPicture === 'function') {
+                await video.requestPictureInPicture();
+                state.isPipActive = true;
+                isAutoPip = automatic;
+                return;
+            }
+
+            // iOS WebKit fallback: webkitSetPresentationMode
+            if (typeof video.webkitSetPresentationMode === 'function') {
                 video.webkitSetPresentationMode('picture-in-picture');
                 state.isPipActive = true;
                 isAutoPip = automatic;
                 return;
             }
 
-            // Standard Chromium / Firefox
-            if (document.pictureInPictureEnabled) {
-                await video.requestPictureInPicture();
-                state.isPipActive = true;
-                isAutoPip = automatic;
+            if (!automatic && typeof showError === 'function') {
+                showError(languages.no_pip || 'Picture-in-Picture is not supported in this browser');
             }
         } catch (err) {
             console.warn('[PiP] Request PiP failed:', err);
             if (!automatic && typeof showError === 'function') {
-                showError(languages.no_pip || 'Picture-in-Picture could not be started');
+                showError('Picture-in-Picture failed: ' + (err.message || err));
             }
         }
     }
@@ -243,38 +243,28 @@
     }
 
     async function togglePictureInPicture() {
-        if (state.isOnIOS && !document.pictureInPictureEnabled) {
-            const video = findBestVideo();
-            if (video && typeof video.webkitSetPresentationMode === 'function') {
-                const currentMode = video.webkitPresentationMode;
-                if (currentMode === 'picture-in-picture') {
-                    video.webkitSetPresentationMode('inline');
-                    state.isPipActive = false;
-                } else {
-                    video.webkitSetPresentationMode('picture-in-picture');
-                    state.isPipActive = true;
-                }
-                return;
-            } else {
-                if (typeof showInfo === 'function') {
-                    showInfo('للاستمرار في الميتنج أثناء الخروج، يمكنك تفعيل ميزة الصورة داخل صورة يدويًا عبر مشغل الفيديو');
-                }
-                return;
-            }
+        // 1. If currently in PiP, exit
+        if (document.pictureInPictureElement) {
+            await exitPip();
+            return;
         }
 
-        if (!document.pictureInPictureEnabled) {
-            if (typeof showError === 'function') {
-                showError(languages.no_pip || 'Picture-in-Picture is not supported in this browser');
+        // 2. iOS Safari handling
+        const video = findBestVideo();
+        if (video && typeof video.webkitSetPresentationMode === 'function' && typeof video.requestPictureInPicture !== 'function') {
+            const currentMode = video.webkitPresentationMode;
+            if (currentMode === 'picture-in-picture') {
+                video.webkitSetPresentationMode('inline');
+                state.isPipActive = false;
+            } else {
+                video.webkitSetPresentationMode('picture-in-picture');
+                state.isPipActive = true;
             }
             return;
         }
 
-        if (document.pictureInPictureElement) {
-            await exitPip();
-        } else {
-            await enterPip(false);
-        }
+        // 3. Enter PiP
+        await enterPip(false);
     }
 
     function bindEvents() {
@@ -291,7 +281,7 @@
             if (document.pictureInPictureElement) {
                 exitPip();
             } else {
-                if (this.readyState >= 1 && this.srcObject && this.srcObject.getVideoTracks().length) {
+                if (typeof this.requestPictureInPicture === 'function') {
                     this.requestPictureInPicture().catch(() => {
                         enterPip(false);
                     });

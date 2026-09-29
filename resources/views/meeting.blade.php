@@ -132,7 +132,7 @@
 @section('content')
     <div class="container meeting-details">
         <canvas id="audioOnly" hidden></canvas>
-        <video id="fallbackVideo" src="{{ asset('videos/fallback.mp4') }}" loop muted playsinline webkit-playsinline autopictureinpicture style="display: none;"></video>
+        <video id="fallbackVideo" src="{{ asset('videos/fallback.mp4') }}" loop muted playsinline webkit-playsinline autopictureinpicture style="position: fixed; width: 1px; height: 1px; opacity: 0.001; pointer-events: none; bottom: 0; right: 0; z-index: -1;"></video>
         <div class="row h-100 justify-content-center align-items-center">
             <div class="col-lg-7 video-detail">
                 <div class="video-Section">
