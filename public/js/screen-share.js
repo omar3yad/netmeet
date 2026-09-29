@@ -213,6 +213,9 @@
             videoScreen.id = 'video-' + state.screenSocketId;
             videoScreen.setAttribute('autoplay', '');
             videoScreen.setAttribute('playsinline', '');
+            videoScreen.setAttribute('webkit-playsinline', '');
+            videoScreen.setAttribute('autopictureinpicture', '');
+            videoScreen.autoPictureInPicture = true;
             videoScreen.srcObject = state.screenStream;
             videoScreen.muted = true;
 

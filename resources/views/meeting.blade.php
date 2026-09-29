@@ -132,11 +132,11 @@
 @section('content')
     <div class="container meeting-details">
         <canvas id="audioOnly" hidden></canvas>
-        <video id="fallbackVideo" src="{{ asset('videos/fallback.mp4') }}" loop muted playsinline style="display: none;"></video>
+        <video id="fallbackVideo" src="{{ asset('videos/fallback.mp4') }}" loop muted playsinline webkit-playsinline autopictureinpicture style="display: none;"></video>
         <div class="row h-100 justify-content-center align-items-center">
             <div class="col-lg-7 video-detail">
                 <div class="video-Section">
-                    <video id="previewVideo" class="cam" autoplay playsinline muted></video>
+                    <video id="previewVideo" class="cam" autoplay playsinline webkit-playsinline muted></video>
                     <div class="cameraText">{{ __('Camera is off') }}</div>
                     <div class="video-controls">
                         <ul>
@@ -247,7 +247,7 @@
                 <div id="selfContainer" class="videoContainer">
                     <img src="{{ asset('storage/images/SECONDARY_LOGO.png') }}" class="meeting-logo"
                         alt="{{ getSetting('APPLICATION_NAME') }}" />
-                    <video id="localVideo" class="cam" autoplay playsinline muted></video>
+                    <video id="localVideo" class="cam" autoplay playsinline webkit-playsinline muted autopictureinpicture></video>
                     <span class="local-user-name">{{ __('You') }}
                         <i class='fas fa-crown moderator-icon' title='{{ __("Moderator") }}'
                             @if (!$meeting->isModerator) style="display: none" @endif></i>
@@ -679,251 +679,12 @@
     <script src="/js/recording.js?v=chunk_v1"></script>
     <script src="/js/ui.js"></script>
 
-{{-- Picture-in-Picture + Wake Lock for mobile background --}}
-<script>
-(function() {
-    let wakeLock = null;
-    let pipVideo = null;
-    let wasInPiP = false;
-
-    // Request wake lock to keep screen on during meeting
-    async function requestWakeLock() {
-        try {
-            if ('wakeLock' in navigator) {
-                wakeLock = await navigator.wakeLock.request('screen');
-                console.log('Wake Lock active');
-                wakeLock.addEventListener('release', () => console.log('Wake Lock released'));
-            }
-        } catch (err) { console.log('Wake Lock failed:', err); }
-    }
-
-    // Helper to check if a video has an active stream/content
-    function isVideoActive(v) {
-        if (!v) return false;
-        if (v.id === 'fallbackVideo') {
-            return v.readyState >= 1; // Metadata loaded, ready for PiP
-        }
-        if (v.id === 'previewVideo') return false;
-        if (!v.srcObject) return false;
-        
-        const videoTracks = v.srcObject.getVideoTracks();
-        if (videoTracks.length === 0) return false;
-        
-        // Return true if track is enabled and active
-        return videoTracks.some(track => track.enabled && track.readyState !== 'ended');
-    }
-
-    // Find the best active video based on priority:
-    // 1. Available screen share (local or remote)
-    // 2. Remote participant videos
-    // 3. Local camera
-    // 4. Fallback video
-    function findActiveVideo() {
-        // 1. Screen Share (look for container with screen-share-container class or OT_big class)
-        const screenShareVideo = document.querySelector('.screen-share-container video, .videoContainer.OT_big video');
-        if (screenShareVideo && isVideoActive(screenShareVideo)) {
-            return screenShareVideo;
-        }
-
-        // 2. Remote participant videos
-        const remoteVideos = document.querySelectorAll('.videoContainer:not(#selfContainer) video');
-        for (const v of remoteVideos) {
-            if (v.id !== 'fallbackVideo' && isVideoActive(v)) {
-                return v;
-            }
-        }
-
-        // 3. Local camera
-        const localVideo = document.getElementById('localVideo');
-        if (localVideo && isVideoActive(localVideo)) {
-            return localVideo;
-        }
-
-        // 4. Fallback video
-        const fallbackVideo = document.getElementById('fallbackVideo');
-        if (fallbackVideo && isVideoActive(fallbackVideo)) {
-            return fallbackVideo;
-        }
-
-        return null;
-    }
-
-    // Periodically update autoPictureInPicture attribute on the active video
-    function updateAutoPip() {
-        if (!document.pictureInPictureEnabled) return;
-        const bestVideo = findActiveVideo();
-        const allVideos = document.querySelectorAll('video');
-        allVideos.forEach(v => {
-            if (v === bestVideo) {
-                if (!v.autoPictureInPicture) {
-                    v.autoPictureInPicture = true;
-                    v.disablePictureInPicture = false;
-                }
-            } else {
-                if (v.autoPictureInPicture) {
-                    v.autoPictureInPicture = false;
-                }
-            }
-        });
-    }
-    // Update auto-PiP state every second
-    setInterval(updateAutoPip, 1000);
-
-    // Register Media Session handler for automatic PiP
-    if ('mediaSession' in navigator) {
-        try {
-            navigator.mediaSession.setActionHandler('enterpictureinpicture', async () => {
-                const video = findActiveVideo();
-                if (video) {
-                    try {
-                        if (video.id === 'fallbackVideo' && video.paused) {
-                            await video.play();
-                        }
-                        await video.requestPictureInPicture();
-                        wasInPiP = true;
-                    } catch (e) {
-                        console.log('Media Session PiP failed:', e);
-                    }
-                }
-            });
-        } catch (err) {
-            console.log('Media Session action handler registration failed:', err);
-        }
-    }
-
-    let wasAutoPiP = false;
-
-    // Auto-PiP when user minimizes / switches apps
-    document.addEventListener('visibilitychange', async () => {
-        if (document.visibilityState === 'hidden') {
-            // Only try auto-PiP if browser supports it and we are not already in PiP
-            if (!document.pictureInPictureEnabled) return;
-            if (document.pictureInPictureElement) return;
-
-            const video = findActiveVideo();
-            if (!video) return;
-
-            try {
-                if (video.id === 'fallbackVideo' && video.paused) {
-                    await video.play();
-                }
-                pipVideo = video;
-                await video.requestPictureInPicture();
-                wasInPiP = true;
-                wasAutoPiP = true;
-                console.log('Entered PiP automatically');
-            } catch (err) {
-                console.log('Auto-PiP failed:', err);
-            }
-        } else if (document.visibilityState === 'visible') {
-            // Reacquire wake lock
-            requestWakeLock();
-
-            // Only exit PiP if it was entered automatically via backgrounding
-            if (wasAutoPiP && document.pictureInPictureElement) {
-                try {
-                    await document.exitPictureInPicture();
-                    wasInPiP = false;
-                    wasAutoPiP = false;
-                } catch (err) { console.log('Exit Auto-PiP failed:', err); }
-            }
-        }
-    });
-
-    // Reacquire wake lock when visible again
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && wakeLock === null) {
-            requestWakeLock();
-        }
-    });
-
-    // Initial activation when meeting starts (any user interaction)
-    function initOnInteraction() {
-        requestWakeLock();
-        const fallback = document.getElementById('fallbackVideo');
-        if (fallback) {
-            fallback.play().catch(e => console.log('Fallback video autoplay failed:', e));
-        }
-        document.removeEventListener('click', initOnInteraction);
-        document.removeEventListener('touchstart', initOnInteraction);
-    }
-    document.addEventListener('click', initOnInteraction, { once: true });
-    document.addEventListener('touchstart', initOnInteraction, { once: true });
-
-    // Debug: log what's in the DOM when PiP is pressed
-    function debugPipState() {
-        const allVideos = document.querySelectorAll('video');
-        let report = '=== PiP Debug ===\n';
-        report += 'Total videos: ' + allVideos.length + '\n';
-        allVideos.forEach((v, i) => {
-            report += `Video ${i}: id=${v.id || '(none)'}, ` +
-                      `class=${v.className}, ` +
-                      `srcObject=${!!v.srcObject}, ` +
-                      `videoWidth=${v.videoWidth}, ` +
-                      `readyState=${v.readyState}, ` +
-                      `paused=${v.paused}\n`;
-        });
-        report += 'PiP enabled: ' + document.pictureInPictureEnabled + '\n';
-        report += 'In PiP: ' + !!document.pictureInPictureElement + '\n';
-        console.log(report);
-        return report;
-    }
-
-    // Manual PiP button trigger
-    window.toggleMeetingPiP = async function() {
-        if (document.pictureInPictureElement) {
-            try {
-                await document.exitPictureInPicture();
-                wasInPiP = false;
-                wasAutoPiP = false;
-            } catch (e) {
-                console.log('Exit PiP error:', e);
-            }
-        } else {
-            const video = findActiveVideo();
-            if (video) {
-                try {
-                    if (video.id === 'fallbackVideo' && video.paused) {
-                        await video.play();
-                    }
-                    await video.requestPictureInPicture();
-                    wasInPiP = true;
-                    wasAutoPiP = false;
-                } catch (e) {
-                    console.log('PiP failed:', e);
-                    if (typeof showError === 'function') {
-                        showError('Picture-in-Picture failed: ' + (e.message || e));
-                    } else {
-                        alert('Picture-in-Picture failed.');
-                    }
-                }
-            } else {
-                const debug = debugPipState();
-                if (typeof showError === 'function') {
-                    showError('No active video found for Picture-in-Picture');
-                } else {
-                    alert('PiP failed. Debug info:\n\n' + debug);
-                }
-            }
-        }
-    };
-
-    // Reset state when user leaves PiP manually from native browser control
-    document.addEventListener('leavepictureinpicture', () => {
-        wasInPiP = false;
-        wasAutoPiP = false;
-    });
-})();
-</script>
-
-
 {{-- Hide Download App button inside meeting --}}
 <style>
     #np-floating-install, .np-install-btn {
         display: none !important;
     }
 </style>
-
 
 {{-- Auto-reconnect media tracks when returning from background --}}
 <script>
@@ -941,15 +702,17 @@
         if (hiddenDuration < 1500) return; // Ignore short hides
 
         // Check if we're in a meeting and localStream exists
-        if (typeof localStream === 'undefined' || !localStream) return;
+        const st = (typeof Meeting !== 'undefined' && Meeting.state) ? Meeting.state : null;
+        const currentStream = st ? st.localStream : (typeof window.localStream !== 'undefined' ? window.localStream : null);
+        if (!currentStream) return;
 
         try {
-            const videoTracks = localStream.getVideoTracks();
-            const audioTracks = localStream.getAudioTracks();
+            const videoTracks = currentStream.getVideoTracks();
+            const audioTracks = currentStream.getAudioTracks();
 
             // Check if any track is dead/ended
             const needsReconnect = [...videoTracks, ...audioTracks].some(t =>
-                t.readyState === 'ended' || t.muted
+                t.readyState === 'ended' || (t.muted && st && !st.audioMuted && !st.videoMuted)
             );
 
             if (!needsReconnect) return;
@@ -957,38 +720,41 @@
             console.log('[NetMeet] Reconnecting media tracks after background...');
 
             // Get fresh media stream
+            const hasVideo = videoTracks.length > 0 && (!st || !st.videoMuted);
+            const hasAudio = audioTracks.length > 0 && (!st || !st.audioMuted);
+            if (!hasVideo && !hasAudio) return;
+
             const constraints = {
-                video: videoTracks.length > 0,
-                audio: audioTracks.length > 0
+                video: hasVideo,
+                audio: hasAudio
             };
             const newStream = await navigator.mediaDevices.getUserMedia(constraints);
 
-            // Replace video track in all peer connections
-            if (typeof peerConnections !== 'undefined' && peerConnections) {
-                const newVideoTrack = newStream.getVideoTracks()[0];
-                const newAudioTrack = newStream.getAudioTracks()[0];
+            // Replace tracks in all peer connections
+            const connections = st ? st.connections : (typeof peerConnections !== 'undefined' ? peerConnections : {});
+            const newVideoTrack = newStream.getVideoTracks()[0];
+            const newAudioTrack = newStream.getAudioTracks()[0];
 
-                Object.values(peerConnections).forEach(pc => {
-                    if (!pc || !pc.getSenders) return;
-                    pc.getSenders().forEach(sender => {
-                        if (sender.track && sender.track.kind === 'video' && newVideoTrack) {
-                            sender.replaceTrack(newVideoTrack).catch(e => console.log('Video replace failed:', e));
-                        }
-                        if (sender.track && sender.track.kind === 'audio' && newAudioTrack) {
-                            sender.replaceTrack(newAudioTrack).catch(e => console.log('Audio replace failed:', e));
-                        }
-                    });
+            Object.values(connections).forEach(pc => {
+                if (!pc || !pc.getSenders) return;
+                pc.getSenders().forEach(sender => {
+                    if (sender.track && sender.track.kind === 'video' && newVideoTrack) {
+                        sender.replaceTrack(newVideoTrack).catch(e => console.log('Video replace failed:', e));
+                    }
+                    if (sender.track && sender.track.kind === 'audio' && newAudioTrack) {
+                        sender.replaceTrack(newAudioTrack).catch(e => console.log('Audio replace failed:', e));
+                    }
                 });
-            }
+            });
 
-            // Update localStream
-            videoTracks.forEach(t => { t.stop(); localStream.removeTrack(t); });
-            audioTracks.forEach(t => { t.stop(); localStream.removeTrack(t); });
-            newStream.getTracks().forEach(t => localStream.addTrack(t));
+            // Update state localStream
+            videoTracks.forEach(t => { t.stop(); currentStream.removeTrack(t); });
+            audioTracks.forEach(t => { t.stop(); currentStream.removeTrack(t); });
+            newStream.getTracks().forEach(t => currentStream.addTrack(t));
 
             // Update local video element
             const localVideoEl = document.getElementById('localVideo');
-            if (localVideoEl) localVideoEl.srcObject = localStream;
+            if (localVideoEl) localVideoEl.srcObject = currentStream;
 
             console.log('[NetMeet] Media tracks reconnected');
         } catch (e) {

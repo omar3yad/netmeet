@@ -147,6 +147,9 @@
             videoRemote.id = 'video-' + socketId;
             videoRemote.setAttribute('autoplay', '');
             videoRemote.setAttribute('playsinline', '');
+            videoRemote.setAttribute('webkit-playsinline', '');
+            videoRemote.setAttribute('autopictureinpicture', '');
+            videoRemote.autoPictureInPicture = true;
             videoRemote.srcObject = event.streams[0];
 
             videoRemote.onloadedmetadata = function (e) {

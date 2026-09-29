@@ -431,8 +431,30 @@
     }
 
     // iPhone fix - while clicking on kick button, video got paused
-    localVideo.addEventListener("pause", (event) => {
-        localVideo.play();
+    const localVideoEl = document.getElementById('localVideo');
+    if (localVideoEl) {
+        localVideoEl.addEventListener("pause", (event) => {
+            localVideoEl.play().catch(() => {});
+        });
+    }
+
+    // Keep audio active and remote media playing when page/tab is in background
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            if (state.localStream) {
+                state.localStream.getAudioTracks().forEach(function (track) {
+                    if (!state.audioMuted) {
+                        track.enabled = true;
+                    }
+                });
+            }
+
+            document.querySelectorAll('#videos video').forEach(function (v) {
+                if (v.paused && v.id !== 'previewVideo') {
+                    v.play().catch(() => {});
+                }
+            });
+        }
     });
 
     // ---------------------------------------------------------------

@@ -687,7 +687,15 @@
     });
 
     // On page hide/close: clean up without triggering native confirm prompts
-    window.addEventListener(eventName, function () {
+    window.addEventListener(eventName, function (e) {
+        // Do not tear down if Picture-in-Picture is active or page is persisted in background
+        if (document.pictureInPictureElement || state.isPipActive) {
+            return;
+        }
+        if (e && e.persisted) {
+            return;
+        }
+
         // Only run minimal cleanup for this client
         if (state.isModerator && state.initiated) {
             // Optional: save meeting state on the server if needed
