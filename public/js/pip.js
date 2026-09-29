@@ -80,6 +80,33 @@
         }
     }
 
+    let keepAliveAudioCtx = null;
+    let keepAliveOsc = null;
+
+    function startWebAudioKeepAlive() {
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) return;
+            if (!keepAliveAudioCtx) {
+                keepAliveAudioCtx = new AudioContextClass();
+            }
+            if (keepAliveAudioCtx.state === 'suspended') {
+                keepAliveAudioCtx.resume().catch(() => {});
+            }
+            if (!keepAliveOsc) {
+                keepAliveOsc = keepAliveAudioCtx.createOscillator();
+                const gain = keepAliveAudioCtx.createGain();
+                keepAliveOsc.frequency.value = 440;
+                gain.gain.value = 0.00001; // Inaudible
+                keepAliveOsc.connect(gain);
+                gain.connect(keepAliveAudioCtx.destination);
+                keepAliveOsc.start();
+            }
+        } catch (e) {
+            console.log('[WebAudio KeepAlive] Error:', e);
+        }
+    }
+
     // Dynamic Island / MediaSession background audio keeper
     function setupMediaSessionAndBackgroundCarrier() {
         if (!backgroundCarrier) {
@@ -108,12 +135,14 @@
                 navigator.mediaSession.playbackState = 'playing';
 
                 navigator.mediaSession.setActionHandler('play', () => {
+                    startWebAudioKeepAlive();
                     if (backgroundCarrier) backgroundCarrier.play().catch(() => {});
                     navigator.mediaSession.playbackState = 'playing';
                 });
 
                 navigator.mediaSession.setActionHandler('pause', () => {
                     // Keep meeting audio alive
+                    startWebAudioKeepAlive();
                     if (backgroundCarrier) backgroundCarrier.play().catch(() => {});
                     navigator.mediaSession.playbackState = 'playing';
                 });
@@ -127,6 +156,7 @@
         }
 
         const kickstartAudio = () => {
+            startWebAudioKeepAlive();
             if (backgroundCarrier && backgroundCarrier.paused) {
                 backgroundCarrier.play().then(() => {
                     if ('mediaSession' in navigator) {
@@ -406,10 +436,8 @@
                 }
             }
 
-            // ONLY show error if PiP is genuinely NOT open/active and wasn't automatic
-            if (!automatic && !document.pictureInPictureElement && !state.isPipActive && typeof showError === 'function') {
-                showError('Picture-in-Picture failed: ' + (err.message || err));
-            }
+            // Log to console only - avoid intrusive popup for user
+            console.warn('[PiP] Picture-in-Picture request failed:', err);
         }
     }
 

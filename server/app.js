@@ -15,7 +15,10 @@ const https = require('https').Server(options, app);
 const io = require('socket.io')(https, {
     cors: {
         origin: process.env.DOMAIN //allow only the specified domain to connect
-    }
+    },
+    pingTimeout: 180000,
+    pingInterval: 25000,
+    connectTimeout: 45000
 });
 const listner = https.listen(process.env.PORT, function() {
 	console.log('Listening on ', listner.address().port);

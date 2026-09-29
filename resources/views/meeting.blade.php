@@ -372,6 +372,9 @@
             <button class="btn meeting-option" title="{{ __('Picture in Picture') }}" id="pictureInPicture" style="">
                 <i class="fa fa-external-link-alt"></i>
             </button>
+            <button class="btn meeting-option" title="{{ __('Fullscreen') }}" id="toggleFullscreen">
+                <i class="fa fa-expand"></i>
+            </button>
             <button class="btn meeting-option" title="{{ __('Raise Hand') }}" id="raiseHand">
                 <i class="fa fa-hand-paper"></i>
             </button>
@@ -762,6 +765,32 @@
         }
     });
 })();
+</script>
+
+<script>
+$(document).on('click', '#toggleFullscreen', function () {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        const docEl = document.documentElement;
+        if (docEl.requestFullscreen) {
+            docEl.requestFullscreen().catch(() => {});
+        } else if (docEl.webkitRequestFullscreen) {
+            docEl.webkitRequestFullscreen();
+        }
+        $('#toggleFullscreen i').removeClass('fa-expand').addClass('fa-compress');
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+        $('#toggleFullscreen i').removeClass('fa-compress').addClass('fa-expand');
+    }
+});
+document.addEventListener('fullscreenchange', function() {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        $('#toggleFullscreen i').removeClass('fa-compress').addClass('fa-expand');
+    }
+});
 </script>
 
 

@@ -696,6 +696,13 @@
             return;
         }
 
+        // CRITICAL: On mobile, pressing Home or switching apps triggers 'pagehide' while call is still active!
+        // Never send 'leave' or kill local video tracks unless the user explicitly clicked the Leave button.
+        if (!state.intentionalLeave) {
+            console.log('[NetMeet] Page hidden in background - preserving meeting session');
+            return;
+        }
+
         // Only run minimal cleanup for this client
         if (state.isModerator && state.initiated) {
             // Optional: save meeting state on the server if needed
