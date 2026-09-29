@@ -3,11 +3,13 @@
  * -----------------------------------------------------------------------
  * Loads after screen-share.js. Owns Picture-in-Picture (PiP) and Auto-PiP.
  * Handles:
- *  - Automatic Picture-in-Picture when page/tab is backgrounded (visibilitychange)
+ *  - Automatic Picture-in-Picture when page/tab is backgrounded (visibilitychange & native autoPiP)
  *  - Exit PiP when returning to foreground (if auto-entered)
- *  - Manual PiP toggle via #pictureInPicture button or video click
- *  - Dynamic Canvas Video fallback for audio-only / camera-off meetings
- *    (prevents "The video element has no video track" error)
+ *  - Debounced manual PiP toggle via #pictureInPicture button or video click
+ *  - Dynamic Canvas Video inside #selfContainer for camera-off / audio-only meetings
+ *    (enables native Chrome Android Auto-PiP on Home button even with camera off)
+ *  - MediaSession background audio carrier (Dynamic Island / lock screen notification)
+ *    to prevent audio/mic cutoff on mobile
  *  - Syncing button state and PiP indicators
  * -----------------------------------------------------------------------
  */
@@ -20,9 +22,11 @@
     let isAutoPip = false;
     let wakeLock = null;
     let isInitialized = false;
+    let isToggling = false;
 
     let canvasStreamVideo = null;
     let canvasAnimId = null;
+    let backgroundCarrier = null;
 
     Meeting.pip = {
         initializePictureInPicture: initializePictureInPicture,
@@ -32,7 +36,7 @@
         findBestVideo: findBestVideo
     };
 
-    // Expose global for inline onclick="toggleMeetingPiP()" in Blade template
+    // Expose global for compatibility
     window.toggleMeetingPiP = togglePictureInPicture;
 
     function initializePictureInPicture() {
@@ -41,6 +45,7 @@
 
         setupAutoPip();
         setupWakeLock();
+        setupMediaSessionAndBackgroundCarrier();
         bindEvents();
         ensurePlaybackOnInteraction();
     }
@@ -52,6 +57,9 @@
             const fallback = document.getElementById('fallbackVideo');
             if (fallback && fallback.paused) {
                 fallback.play().catch(() => {});
+            }
+            if (backgroundCarrier && backgroundCarrier.paused) {
+                backgroundCarrier.play().catch(() => {});
             }
         }
         document.addEventListener('click', kickstart, { passive: true, once: true });
@@ -70,6 +78,67 @@
                 console.log('[PiP] WakeLock request error:', err);
             }
         }
+    }
+
+    // Dynamic Island / MediaSession background audio keeper
+    function setupMediaSessionAndBackgroundCarrier() {
+        if (!backgroundCarrier) {
+            // Inaudible silent wav audio loop
+            const silentWav = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==';
+            backgroundCarrier = new Audio(silentWav);
+            backgroundCarrier.loop = true;
+            backgroundCarrier.volume = 0.01;
+        }
+
+        const appName = (typeof features !== 'undefined' && features.appName) ? features.appName : 'NetMeet';
+        const meetTitle = (typeof userInfo !== 'undefined' && userInfo.meetingTitle) ? userInfo.meetingTitle : 'Meeting in progress';
+
+        if ('mediaSession' in navigator) {
+            try {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: meetTitle,
+                    artist: appName,
+                    album: 'Online Meeting',
+                    artwork: [
+                        { src: '/storage/images/SECONDARY_LOGO.png', sizes: '96x96', type: 'image/png' },
+                        { src: '/storage/images/SECONDARY_LOGO.png', sizes: '192x192', type: 'image/png' },
+                        { src: '/storage/images/SECONDARY_LOGO.png', sizes: '512x512', type: 'image/png' }
+                    ]
+                });
+                navigator.mediaSession.playbackState = 'playing';
+
+                navigator.mediaSession.setActionHandler('play', () => {
+                    if (backgroundCarrier) backgroundCarrier.play().catch(() => {});
+                    navigator.mediaSession.playbackState = 'playing';
+                });
+
+                navigator.mediaSession.setActionHandler('pause', () => {
+                    // Keep meeting audio alive
+                    if (backgroundCarrier) backgroundCarrier.play().catch(() => {});
+                    navigator.mediaSession.playbackState = 'playing';
+                });
+
+                navigator.mediaSession.setActionHandler('enterpictureinpicture', async () => {
+                    await enterPip(true);
+                });
+            } catch (e) {
+                console.log('[PiP] MediaSession setup error:', e);
+            }
+        }
+
+        const kickstartAudio = () => {
+            if (backgroundCarrier && backgroundCarrier.paused) {
+                backgroundCarrier.play().then(() => {
+                    if ('mediaSession' in navigator) {
+                        navigator.mediaSession.playbackState = 'playing';
+                    }
+                }).catch(() => {});
+            }
+        };
+
+        document.addEventListener('click', kickstartAudio, { passive: true });
+        document.addEventListener('touchstart', kickstartAudio, { passive: true });
+        kickstartAudio();
     }
 
     // Check if an element has a real, active VIDEO track
@@ -105,8 +174,17 @@
                 canvasStreamVideo.setAttribute('playsinline', '');
                 canvasStreamVideo.setAttribute('webkit-playsinline', '');
                 canvasStreamVideo.setAttribute('autopictureinpicture', '');
-                canvasStreamVideo.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0.001;pointer-events:none;bottom:0;right:0;z-index:-1;';
-                document.body.appendChild(canvasStreamVideo);
+                canvasStreamVideo.autoPictureInPicture = true;
+
+                // Mount inside #selfContainer so it is visible in the viewport when camera is off
+                const selfContainer = document.getElementById('selfContainer');
+                if (selfContainer) {
+                    canvasStreamVideo.style.cssText = 'width:100%;height:100%;object-fit:contain;position:absolute;top:0;left:0;z-index:2;pointer-events:none;';
+                    selfContainer.appendChild(canvasStreamVideo);
+                } else {
+                    canvasStreamVideo.style.cssText = 'position:fixed;width:240px;height:180px;bottom:10px;right:10px;z-index:9999;pointer-events:none;';
+                    document.body.appendChild(canvasStreamVideo);
+                }
             }
         }
 
@@ -143,7 +221,7 @@
     }
 
     function drawCanvasFrame(canvas, ctx) {
-        // Background
+        // Dark modern gradient
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
         gradient.addColorStop(0, '#0f172a');
         gradient.addColorStop(1, '#1e293b');
@@ -189,12 +267,12 @@
         // 2. Active remote participant video with video tracks
         const remoteVideos = document.querySelectorAll('#videos .videoContainer:not(#selfContainer) video');
         for (const v of remoteVideos) {
-            if (v.id !== 'fallbackVideo' && hasVideoTrack(v)) {
+            if (v.id !== 'fallbackVideo' && v.id !== 'pipCanvasVideo' && hasVideoTrack(v)) {
                 return v;
             }
         }
 
-        // 3. Local camera video with video tracks
+        // 3. Local camera video with video tracks (when camera is on)
         const localVideo = document.getElementById('localVideo');
         if (localVideo && hasVideoTrack(localVideo)) {
             return localVideo;
@@ -233,17 +311,6 @@
         // Regularly refresh the autoPictureInPicture flag on the best video (for Chromium automatic PiP)
         setInterval(updateAutoPipAttribute, 1500);
 
-        // Media Session handler for browsers supporting automatic/media PiP
-        if ('mediaSession' in navigator) {
-            try {
-                navigator.mediaSession.setActionHandler('enterpictureinpicture', async () => {
-                    await enterPip(true);
-                });
-            } catch (e) {
-                console.log('[PiP] mediaSession enterpictureinpicture handler error:', e);
-            }
-        }
-
         // Visibilitychange event listener: triggered as soon as user goes to Home or background
         document.addEventListener('visibilitychange', onVisibilityChange);
     }
@@ -257,11 +324,16 @@
     }
 
     async function onBackground() {
-        if (document.pictureInPictureElement) {
+        if (document.pictureInPictureElement || state.isPipActive) {
             return;
         }
 
-        // Try to enter PiP automatically immediately when user leaves / goes home
+        // Ensure background audio is playing so sound/mic never cut out
+        if (backgroundCarrier && backgroundCarrier.paused) {
+            backgroundCarrier.play().catch(() => {});
+        }
+
+        // Try to enter PiP automatically when user leaves / goes home
         await enterPip(true);
     }
 
@@ -282,7 +354,7 @@
     }
 
     async function enterPip(automatic = false) {
-        if (document.pictureInPictureElement) return;
+        if (document.pictureInPictureElement || state.isPipActive) return;
 
         const video = findBestVideo();
         if (!video) {
@@ -313,14 +385,10 @@
                 isAutoPip = automatic;
                 return;
             }
-
-            if (!automatic && typeof showError === 'function') {
-                showError(languages.no_pip || 'Picture-in-Picture is not supported in this browser');
-            }
         } catch (err) {
             console.warn('[PiP] Primary video request failed:', err);
 
-            // If primary video failed (e.g. track error), try canvas video as guaranteed fallback
+            // If primary video failed, try canvas video as guaranteed fallback
             if (video.id !== 'pipCanvasVideo') {
                 try {
                     const canvasVid = getCanvasVideo();
@@ -338,7 +406,8 @@
                 }
             }
 
-            if (!automatic && typeof showError === 'function') {
+            // ONLY show error if PiP is genuinely NOT open/active and wasn't automatic
+            if (!automatic && !document.pictureInPictureElement && !state.isPipActive && typeof showError === 'function') {
                 showError('Picture-in-Picture failed: ' + (err.message || err));
             }
         }
@@ -357,28 +426,38 @@
     }
 
     async function togglePictureInPicture() {
-        // 1. If currently in PiP, exit
-        if (document.pictureInPictureElement) {
-            await exitPip();
-            return;
-        }
+        // Prevent rapid double-clicks
+        if (isToggling) return;
+        isToggling = true;
 
-        // 2. iOS Safari handling
-        const video = findBestVideo();
-        if (video && typeof video.webkitSetPresentationMode === 'function' && typeof video.requestPictureInPicture !== 'function') {
-            const currentMode = video.webkitPresentationMode;
-            if (currentMode === 'picture-in-picture') {
-                video.webkitSetPresentationMode('inline');
-                state.isPipActive = false;
-            } else {
-                video.webkitSetPresentationMode('picture-in-picture');
-                state.isPipActive = true;
+        try {
+            // 1. If currently in PiP, exit
+            if (document.pictureInPictureElement || state.isPipActive) {
+                await exitPip();
+                return;
             }
-            return;
-        }
 
-        // 3. Enter PiP
-        await enterPip(false);
+            // 2. iOS Safari handling
+            const video = findBestVideo();
+            if (video && typeof video.webkitSetPresentationMode === 'function' && typeof video.requestPictureInPicture !== 'function') {
+                const currentMode = video.webkitPresentationMode;
+                if (currentMode === 'picture-in-picture') {
+                    video.webkitSetPresentationMode('inline');
+                    state.isPipActive = false;
+                } else {
+                    video.webkitSetPresentationMode('picture-in-picture');
+                    state.isPipActive = true;
+                }
+                return;
+            }
+
+            // 3. Enter PiP
+            await enterPip(false);
+        } finally {
+            setTimeout(() => {
+                isToggling = false;
+            }, 500);
+        }
     }
 
     function bindEvents() {
@@ -392,7 +471,7 @@
         $(document).on('click', '#videos video', function () {
             if (this.id === 'previewVideo') return;
 
-            if (document.pictureInPictureElement) {
+            if (document.pictureInPictureElement || state.isPipActive) {
                 exitPip();
             } else {
                 if (hasVideoTrack(this) && typeof this.requestPictureInPicture === 'function') {

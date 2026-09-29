@@ -369,7 +369,7 @@
             <button class="btn meeting-option" title="{{ __('Start/Stop ScreenShare') }}" id="screenShare">
                 <i class="fa fa-desktop"></i>
             </button>
-            <button class="btn meeting-option" title="{{ __('Picture in Picture') }}" id="pictureInPicture" onclick="toggleMeetingPiP()" style="">
+            <button class="btn meeting-option" title="{{ __('Picture in Picture') }}" id="pictureInPicture" style="">
                 <i class="fa fa-external-link-alt"></i>
             </button>
             <button class="btn meeting-option" title="{{ __('Raise Hand') }}" id="raiseHand">
