@@ -156,6 +156,21 @@
                 videoRemote.play().catch(function () {});
             };
 
+            // Background audio persistence: keep remote audio playing on mobile even when browser is in background
+            let audioRemote = document.getElementById('audio-' + socketId);
+            if (!audioRemote) {
+                audioRemote = document.createElement('audio');
+                audioRemote.id = 'audio-' + socketId;
+                audioRemote.autoplay = true;
+                audioRemote.playsInline = true;
+                audioRemote.setAttribute('playsinline', '');
+                audioRemote.setAttribute('webkit-playsinline', '');
+                audioRemote.srcObject = event.streams[0];
+                document.body.appendChild(audioRemote);
+            } else {
+                audioRemote.srcObject = event.streams[0];
+            }
+
             let containerDiv = document.createElement('div');
             containerDiv.id = 'container-' + socketId;
 
@@ -304,6 +319,13 @@
             video.load();
             container.removeChild(video);
             videos.removeChild(container);
+
+            const audioRemoteEl = document.getElementById('audio-' + data.fromSocketId);
+            if (audioRemoteEl) {
+                audioRemoteEl.pause();
+                audioRemoteEl.srcObject = null;
+                audioRemoteEl.remove();
+            }
 
             // If a screen share just left, reset layout for all participants
             if (wasScreenShare || data.screen) {
