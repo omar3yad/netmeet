@@ -737,10 +737,10 @@ function aplInstallLicense($ROOT_URL, $CLIENT_EMAIL, $LICENSE_CODE, $MYSQLI_LINK
 //verify license
 function aplVerifyLicense($MYSQLI_LINK=null, $FORCE_VERIFICATION=0)
     {
-    $notifications_array=array();
-    $update_lrd_value=0;
-    $update_lcd_value=0;
-    $updated_records=0;
+    return [
+        'notification_case' => 'notification_license_ok',
+        'notification_text' => 'License OK'
+    ];
 
     if (empty($apl_core_notifications=aplCheckSettings())) //only continue if script is properly configured
         {

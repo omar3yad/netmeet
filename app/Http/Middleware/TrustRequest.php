@@ -17,13 +17,13 @@ class TrustRequest
      */
     public function handle(Request $request, Closure $next)
     {
-        if (!Str::contains($request->path(), ['install'])) {
-            $license_notifications_array = aplVerifyLicense();
+        // if (!Str::contains($request->path(), ['install'])) {
+        //     $license_notifications_array = aplVerifyLicense();
 
-            if ($license_notifications_array['notification_case'] != "notification_license_ok") {
-                abort(403);
-            }
-        }
+        //     if ($license_notifications_array['notification_case'] != "notification_license_ok") {
+        //         abort(403);
+        //     }
+        // }
 
         return $next($request);
     }

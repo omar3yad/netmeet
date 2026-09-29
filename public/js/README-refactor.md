@@ -66,3 +66,10 @@ once you confirm it's wanted.
    the remaining `meeting-core.js` "waiting for host" DOM markup into
    `ui.js`, since `meeting-core.js` is still the largest file (724 lines,
    vs. the original 3000+, but still the biggest of the ten).
+
+
+لتنظيف كاش لارافيل من التيرمينال: #1
+
+```bash
+php artisan optimize:clear
+```
